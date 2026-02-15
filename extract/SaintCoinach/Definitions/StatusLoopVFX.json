@@ -1,0 +1,45 @@
+{
+  "sheet": "StatusLoopVFX",
+  "defaultColumn": "VFX",
+  "definitions": [
+    {
+      "name": "FriendlyVFX",
+      "converter": {
+        "type": "link",
+        "target": "VFX"
+      }
+    },
+    {
+      "index": 1,
+      "name": "StackVFX1Trigger"
+    },
+    {
+      "index": 2,
+      "name": "StackVFX1",
+      "converter": {
+        "type": "link",
+        "target": "VFX"
+      }
+    },
+    {
+      "index": 3,
+      "name": "StackVFX2Trigger"
+    },
+    {
+      "index": 4,
+      "name": "StackVFX2",
+      "converter": {
+        "type": "link",
+        "target": "VFX"
+      }
+    },
+    {
+      "index": 5,
+      "name": "HostileVFX",
+      "converter": {
+        "type": "link",
+        "target": "VFX"
+      }
+    }
+  ]
+}

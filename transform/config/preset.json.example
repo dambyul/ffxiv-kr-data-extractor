@@ -1,0 +1,14 @@
+{
+    "Presets": [
+        {
+            "name": "example",
+            "description": "example description",
+            "entries": [
+                {
+                    "path": "example/path",
+                    "type": "File"
+                }
+            ]
+        }
+    ]
+}
