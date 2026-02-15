@@ -1,0 +1,48 @@
+# Virtual Environments
+.venv/
+__pycache__/
+*.pyc
+
+# OS & Temp Files
+.DS_Store
+Thumbs.db
+*.lnk
+*.log
+*.tmp
+*.zip
+*.bak
+
+# Environment
+.env
+
+# Data Directories
+font/
+transform/original/
+transform/output/
+
+# Build & Library Data
+**/bin/
+**/obj/
+packages/
+.vs/
+
+# User-specific & Artifacts
+*.user
+*.suo
+*.pdb
+*.cache
+*.swp
+*.ide
+*.orig
+
+# SaintCoinach Workspace
+extract/temp_stcoinach/
+extract/SaintCoinach/Definitions_Bak/
+
+# Validation Reports
+transform/validation.json
+
+# User Configurations
+transform/config/filter.json
+transform/config/preset.json
+transform/config/rsv.json
