@@ -1,6 +1,9 @@
 import os
 import shutil
 import datetime
+from .logging_setup import get_logger
+
+logger = get_logger()
 
 class PathManager:
     def __init__(self, base_dir, folder_name, sub_path=""):
@@ -25,17 +28,17 @@ class PathManager:
 
     def prepare_output_dir(self):
         if not os.path.exists(self.src_root):
-            print(f"Error: Source directory not found: {self.src_root}")
+            logger.error(f"Error: Source directory not found: {self.src_root}")
             return False
             
-        print(f"Isolating {self.folder_name} to output/{self.version_string}...")
+        logger.info(f"Isolating {self.folder_name} to output/{self.version_string}...")
         try:
             if os.path.exists(self.dst_root):
                 shutil.rmtree(self.dst_root)
             shutil.copytree(self.src_root, self.dst_root)
             return True
         except Exception as e:
-            print(f"Failed to copy directory: {e}")
+            logger.error(f"Failed to copy directory: {e}")
             return False
 
     def get_version_txt_path(self):

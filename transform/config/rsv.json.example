@@ -1,6 +1,6 @@
 {
-    "example_rsv_key": [
-        "Korean Name",
-        "English Name"
+    "_rsv_12345_-1_6_0_0_S00000000_E00000000": [
+        "한국어 명칭 (KR)",
+        "Global Name (EN)"
     ]
 }

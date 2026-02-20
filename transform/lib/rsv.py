@@ -1,12 +1,14 @@
 import os
 import json
-import urllib.request
+from .logging_setup import get_logger
+
+logger = get_logger()
 
 class RSVManager:
     def __init__(self, json_path):
         self.json_path = json_path
         self.rsv_data = {}
-        self.rsv_files = set()
+        self.rsv_files = {} # dict: filename -> unresolved_count
         self.new_keys_found = False
         self.load()
 
@@ -24,23 +26,34 @@ class RSVManager:
                             else:
                                 self.rsv_data[k] = [v, ""]
             except Exception as e:
-                print(f"Error loading rsv.json: {e}")
+                logger.error(f"Error loading rsv.json: {e}")
 
     def save(self):
         try:
             with open(self.json_path, 'w', encoding='utf-8') as f:
                 json.dump(self.rsv_data, f, indent=4, ensure_ascii=False)
-            print(f"Updated {self.json_path} with RSV data.")
+            logger.info(f"Updated {self.json_path} with RSV data.")
             self.new_keys_found = False
         except Exception as e:
-            print(f"Failed to save rsv.json: {e}")
+            logger.error(f"Failed to save rsv.json: {e}")
 
-    def add_found_file(self, rel_path):
-        """Records a relative path where an RSV key was found, removing .ko suffix."""
+    def add_found_file(self, rel_path, is_unresolved=False):
+        """Records a relative path where an RSV key was found and tracks unresolved count."""
         clean_path = rel_path.replace('.ko.csv', '.csv').replace('\\', '/')
         if not clean_path.startswith("rawexd/"):
             clean_path = f"rawexd/{clean_path}"
-        self.rsv_files.add(clean_path)
+        
+        if clean_path not in self.rsv_files:
+            self.rsv_files[clean_path] = 0
+            
+        if is_unresolved:
+            self.rsv_files[clean_path] += 1
+
+    def is_unresolved(self, key):
+        """Checks if an RSV key has a valid Korean translation."""
+        if key in self.rsv_data:
+            return not self.rsv_data[key][0] # Unresolved if Korean value is empty
+        return True # New keys are unresolved by default until sync/edit
 
     def get_value(self, key):
         if key in self.rsv_data:
@@ -80,7 +93,7 @@ class RSVManager:
                     updated_count += 1
         
         if updated_count > 0:
-            print(f"Synced {updated_count} English overrides from ACT Plugin.")
+            logger.info(f"Synced {updated_count} English overrides from ACT Plugin.")
             self.save()
 
     def _fetch_file_list(self):
@@ -90,13 +103,13 @@ class RSVManager:
                 data = json.loads(response.read().decode('utf-8'))
                 return [f['name'] for f in data if f['name'].startswith('global_')]
         except Exception as e:
-            print(f"Warning: Failed to fetch ACT file list: {e}")
+            logger.warning(f"Failed to fetch ACT file list: {e}")
             return []
 
     def _fetch_overrides_content(self, filenames):
         base_url = "https://raw.githubusercontent.com/ravahn/FFXIV_ACT_Plugin/master/Overrides/"
         lookup_map = {}
-        print("Fetching ACT overrides content...")
+        logger.info("Fetching ACT overrides content...")
         for filename in filenames:
             url = base_url + filename
             try:
