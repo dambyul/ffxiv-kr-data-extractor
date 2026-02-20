@@ -1,13 +1,31 @@
 {
     "Presets": [
         {
-            "name": "example",
+            "name": "폰트",
+            "description": "FFXIV Font Files (.fdt, .tex)",
+            "entries": [
+                {
+                    "path": "font",
+                    "type": "Directory"
+                }
+            ]
+        },
+        {
+            "name": "example_files",
             "description": "example description",
             "entries": [
                 {
-                    "path": "example/path",
+                    "path": "rawexd/Example.csv",
                     "type": "File"
                 }
+            ]
+        }
+    ],
+    "third-party": [
+        {
+            "name": "External_Tool_Data",
+            "files": [
+                "path/to/external/file.json"
             ]
         }
     ]

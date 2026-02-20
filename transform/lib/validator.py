@@ -1,5 +1,8 @@
 import os
 import json
+from .logging_setup import get_logger
+
+logger = get_logger()
 
 class ValidationManager:
     def __init__(self, preset_path):
@@ -10,7 +13,7 @@ class ValidationManager:
 
     def load_presets(self):
         if not os.path.exists(self.preset_path):
-            print(f"Warning: Preset file not found at {self.preset_path}")
+            logger.warning(f"Warning: Preset file not found at {self.preset_path}")
             return
             
         try:
@@ -21,6 +24,10 @@ class ValidationManager:
             presets = data.get("Presets", []) or data.get("presets", [])
                 
             for p in presets:
+                # Skip '폰트' validation
+                if p.get("name") == "폰트":
+                    continue
+                    
                 entries = p.get("Entries", []) or p.get("entries", [])
                 for entry in entries:
                     # Normalize path and type
@@ -38,7 +45,7 @@ class ValidationManager:
                         self.expected_dirs.append(norm_path)
                         
         except Exception as e:
-            print(f"Error loading presets: {e}")
+            logger.error(f"Error loading presets: {e}")
 
     def validate(self, target_dir):
         """Validate actual files against expected presets."""
@@ -104,6 +111,6 @@ class ValidationManager:
         try:
             with open(output_path, 'w', encoding='utf-8') as f:
                 json.dump(results, f, indent=4, ensure_ascii=False)
-            print(f"Validation report saved to {output_path}")
+            logger.info(f"Validation report saved to {output_path}")
         except Exception as e:
-            print(f"Failed to save validation report: {e}")
+            logger.error(f"Failed to save validation report: {e}")

@@ -46,3 +46,14 @@ transform/validation.json
 transform/config/filter.json
 transform/config/preset.json
 transform/config/rsv.json
+transform/config/filter_temp.json
+transform/config/*.csv
+
+# Google API
+google_sheet.json
+
+# Reports & Comparison
+compare_diff_report.csv
+compare/
+transform/compare/
+transform/config/managed_filter.tmp.json

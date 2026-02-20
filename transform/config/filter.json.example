@@ -1,6 +1,40 @@
 {
-    "delete_files": [],
+    "delete_files": [
+        "ExampleToDelete.csv"
+    ],
+    "remap_keys": {
+        "TargetFile.csv": {
+            "OriginalID": "NewID"
+        }
+    },
+    "remap_columns": {
+        "Lobby.csv": {
+            "ColumnOffset": {
+                "RowID": "Value_or_G_or_OtherOffset"
+            }
+        },
+        "AnotherFile.csv": {
+            "ColumnOffset": "G"
+        }
+    },
+    "keep_rows": {
+        "Addon.csv": [
+            123
+        ]
+    },
     "delete_rows": {
-        "Addon.csv": []
+        "LogMessage.csv": [
+            456
+        ]
+    },
+    "delete_columns": {
+        "DawnMemberUIParam.csv": [
+            0
+        ]
+    },
+    "keep_columns": {
+        "Orchestrion.csv": [
+            0
+        ]
     }
 }
