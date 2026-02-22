@@ -6,7 +6,7 @@ load_dotenv()
 
 class Config:
     # Google Sheets
-    GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID", "1C9n6Wwjn6d-LhzH23tet56abMEYaXRepQQEZgG2AbyQ")
+    GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID")
     GOOGLE_CREDS_PATH = os.getenv("GOOGLE_CREDS_PATH", "google_sheet.json")
 
     # AWS S3
