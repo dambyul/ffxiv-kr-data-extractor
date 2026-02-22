@@ -46,7 +46,7 @@ class Orchestrator:
         try:
             self.init_filters()
             
-            # Phase 0: Sync Filter Configuration (Transient)
+            # Sync Filter Configuration
             logger.info(f"Phase 0: Syncing filter configuration from Google Sheets...")
             if not self.fs.update_config():
                 logger.warning("Warning: Filter sync failed, using cached manual config only.")
@@ -62,29 +62,26 @@ class Orchestrator:
 
             target = self.pm.target_dir
             
-            # Phase 2: Initial cleanup and manual filters
             logger.info(f"Phase 2: Initial cleanup and manual filters...")
             self.cp.initial_cleanup(target)
             self.cp.apply_manual_filters(target, self.config)
 
-            # Phase 2.5: Apply Column Remapping (Row-level swaps/injections)
-            logger.info(f"Phase 2.5: Applying column remapping from filter.json...")
+            logger.info(f"Phase 3: Applying column remapping from filter.json...")
             self.cp.apply_column_remapping(target, self.config)
+
+            logger.info(f"Phase 4: Anonymizing chat quest phrases to prevent broadcast...")
+            self.cp.anonymize_chat_phrases(target)
             
-            # Phase 3: Column Filtering
-            logger.info(f"Phase 3: Filtering columns...")
+            logger.info(f"Phase 5: Filtering columns...")
             self.cp.filter_columns(target, config=self.config)
 
-            # Phase 4: Row Filtering (Empty rows)
-            logger.info(f"Phase 4: Removing rows without target language content...")
+            logger.info(f"Phase 6: Removing rows without target language content...")
             self.cp.remove_empty_rows(target, config=self.config)
             
-            # Phase 5: RSV Key Processing
-            logger.info(f"Phase 5: Processing RSV keys...")
+            logger.info(f"Phase 7: Processing RSV keys...")
             self.cp.process_rsv(target) 
             
-            # Phase 6: ACT Override Sync
-            logger.info(f"Phase 6: Syncing ACT overrides...")
+            logger.info(f"Phase 8: Syncing ACT overrides...")
             if self.rm.new_keys_found:
                 # Sync new keys with ACT overrides
                 self.rm.save()
@@ -93,16 +90,13 @@ class Orchestrator:
             else:
                 self.rm.sync_act_overrides()
                 
-            # Phase 7: Manifest Generation
-            logger.info(f"Phase 7: Generating Manifest (data.json)...")
+            logger.info(f"Phase 9: Generating Manifest (data.json)...")
             self.generate_manifest()
 
-            # Phase 8: Non-Korean File Removal
-            logger.info(f"Phase 8: Removing files without Korean content...")
+            logger.info(f"Phase 10: Removing files without Korean content...")
             self.cp.remove_non_korean_files(target)
 
-            # Phase 9: File Renaming
-            logger.info(f"Phase 9: Finalizing file names (.ko.csv -> .csv)...")
+            logger.info(f"Phase 11: Finalizing file names (.ko.csv -> .csv)...")
             self.cp.rename_files(target)
 
             # Package and versioning
@@ -110,8 +104,7 @@ class Orchestrator:
             self.create_zip(rawexd_path)
             self.create_version_txt()
 
-            # Phase 13: Validation
-            logger.info(f"Phase 13: Running validation...")
+            logger.info(f"Phase 12: Running validation...")
             self.run_validation()
             
         finally:
@@ -123,8 +116,7 @@ class Orchestrator:
                 except Exception as e:
                     logger.warning(f"Failed to cleanup transient config: {e}")
         
-        # Phase 14: S3 Upload
-        logger.info(f"Phase 14: Uploading to S3...")
+        logger.info(f"Phase 13: Uploading to S3...")
         zip_base, zip_path = self.pm.get_zip_paths()
         ver_path = self.pm.get_version_txt_path()
         data_path = self.pm.data_json_path
@@ -170,7 +162,8 @@ class Orchestrator:
             logger.error(f"Failed to generate manifest: {e}")
 
     def finalize_directory(self):
-        logger.info("Phase 10: Finalizing directory name...")
+        # Already used correctly
+        logger.info("Finalizing directory name...")
         final_path = os.path.join(self.pm.dst_root, "rawexd")
         if os.path.exists(self.pm.target_dir):
             if os.path.exists(final_path): 
@@ -180,12 +173,12 @@ class Orchestrator:
 
     def create_zip(self, rawexd_path):
         if not os.path.exists(rawexd_path): return
-        logger.info("Phase 11: Zipping results...")
+        logger.info("Zipping results...")
         zip_base, _ = self.pm.get_zip_paths()
         shutil.make_archive(zip_base, 'zip', rawexd_path)
 
     def create_version_txt(self):
-        logger.info("Phase 12: Creating version.txt...")
+        logger.info("Creating version.txt...")
         path = self.pm.get_version_txt_path()
         with open(path, 'w', encoding='utf-8') as f:
             f.write(self.pm.version_string)

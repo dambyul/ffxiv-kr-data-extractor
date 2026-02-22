@@ -23,6 +23,7 @@ while True:
 class CSVProcessor:
     def __init__(self, rsv_manager):
         self.rsv_manager = rsv_manager
+        self.anonymized_ids = {} # {rel_path: set(row_ids)}
 
     @staticmethod
     def make_writable(path):
@@ -64,27 +65,41 @@ class CSVProcessor:
 
         for root, _, files in os.walk(target_dir):
             for f in files:
+                path = os.path.join(root, f)
+                rel_path = os.path.relpath(path, target_dir).replace('\\', '/')
+                base_rel_path = rel_path.replace(".ko.csv", ".csv")
+
                 # File deletion
-                base = f.replace(".ko.csv", ".csv")
-                if base in del_files or f in del_files:
+                is_deleted = False
+                if rel_path in del_files or base_rel_path in del_files:
+                    is_deleted = True
+                else:
+                    # Support folder-level deletion (e.g., "transport/")
+                    for d in del_files:
+                        if d.endswith('/') and (rel_path.startswith(d) or base_rel_path.startswith(d)):
+                            is_deleted = True
+                            break
+                
+                if is_deleted:
                     path = os.path.join(root, f)
                     self.make_writable(path)
                     os.remove(path)
                     continue
 
                 # Row operations
-                rows_to_del = None
-                keys_to_remap = None
+                rows_to_del = del_rows_conf.get(rel_path) or del_rows_conf.get(base_rel_path)
+                keys_to_remap = remap_keys_conf.get(rel_path) or remap_keys_conf.get(base_rel_path)
                 
-                for k in del_rows_conf:
-                    if k == f or k.replace(".csv", ".ko.csv") == f:
-                        rows_to_del = del_rows_conf[k]
-                        break
-                
-                for k in remap_keys_conf:
-                    if k == f or k.replace(".csv", ".ko.csv") == f:
-                        keys_to_remap = remap_keys_conf[k]
-                        break
+                # Try folder-level row config if needed (though rarer)
+                if not rows_to_del or not keys_to_remap:
+                    for k in sorted(del_rows_conf.keys(), key=len, reverse=True):
+                        if k.endswith('/') and (rel_path.startswith(k) or base_rel_path.startswith(k)):
+                            rows_to_del = del_rows_conf[k]
+                            break
+                    for k in sorted(remap_keys_conf.keys(), key=len, reverse=True):
+                        if k.endswith('/') and (rel_path.startswith(k) or base_rel_path.startswith(k)):
+                            keys_to_remap = remap_keys_conf.get(k)
+                            break
                 
                 if rows_to_del or keys_to_remap:
                     self._apply_row_operations(os.path.join(root, f), rows_to_del, keys_to_remap)
@@ -101,12 +116,11 @@ class CSVProcessor:
             for f in files:
                 if not f.endswith(".ko.csv"): continue
                 
-                base = f.replace(".ko.csv", ".csv")
-                file_remaps = None
-                for k in remap_cols_conf:
-                    if k == f or k == base:
-                        file_remaps = remap_cols_conf[k]
-                        break
+                path = os.path.join(root, f)
+                rel_path = os.path.relpath(path, target_dir).replace('\\', '/')
+                base_rel_path = rel_path.replace(".ko.csv", ".csv")
+
+                file_remaps = remap_cols_conf.get(rel_path) or remap_cols_conf.get(base_rel_path)
                 
                 if file_remaps and isinstance(file_remaps, dict):
                     # Check if it has row-specific mappings (dict vs string handle)
@@ -128,26 +142,41 @@ class CSVProcessor:
         offset_to_idx = {str(off): i for i, off in enumerate(offsets)}
         
         modified = False
+        # Handle global remapping if "*" is present
+        global_remap = file_remaps.get("*")
+
         for r_idx in range(4, len(rows)):
             row = rows[r_idx]
             if not row: continue
             rid = row[0]
             
             row_remap = file_remaps.get(str(rid))
-            if not row_remap or not isinstance(row_remap, dict):
+            # Merge with global remap if exists (specific row remap takes priority)
+            effective_remap = dict(global_remap) if global_remap and isinstance(global_remap, dict) else {}
+            if row_remap and isinstance(row_remap, dict):
+                effective_remap.update(row_remap)
+            
+            if not effective_remap:
                 continue
             
-            # row_remap maps { Global_Column_Offset: Target_Value_or_Offset }
-            # We need to match the Global Offset to the current row's column index.
-            
             new_row = list(row)
-            for gl_off, mapped_val in row_remap.items():
+            for gl_off, mapped_val in effective_remap.items():
                 if gl_off not in offset_to_idx: continue
                 target_idx = offset_to_idx[gl_off]
                 
                 if isinstance(mapped_val, str):
-                    # Literal injection
-                    new_row[target_idx] = mapped_val
+                    # Literal injection or placeholder substitution
+                    if "{" in mapped_val and "}" in mapped_val:
+                        # Substitute {offset} with actual column value
+                        updated_val = mapped_val
+                        placeholders = re.findall(r'\{(\d+)\}', mapped_val)
+                        for ph_off in placeholders:
+                            if ph_off in offset_to_idx:
+                                val_idx = offset_to_idx[ph_off]
+                                updated_val = updated_val.replace(f"{{{ph_off}}}", row[val_idx])
+                        new_row[target_idx] = updated_val
+                    else:
+                        new_row[target_idx] = mapped_val
                     modified = True
                 elif isinstance(mapped_val, int):
                     # Column data swap
@@ -164,6 +193,133 @@ class CSVProcessor:
                 csv.writer(f).writerows(rows)
             self.safe_replace(temp, path)
             logger.info(f"Applied column remapping to: {path}")
+
+    def anonymize_chat_phrases(self, target_dir):
+        # Automatically find and anonymize chat quest phrases to "/"
+        quest_dir = os.path.join(target_dir, "quest")
+        if not os.path.exists(quest_dir): return
+
+        quote_regex = re.compile(r'["\']([^"\']+)["\']')
+        hex_regex = re.compile(r'<hex:[A-F0-9]+>')
+
+        for root, _, files in os.walk(quest_dir):
+            for f in files:
+                if not f.endswith(".ko.csv"): continue
+                path = os.path.join(root, f)
+                rel_path = os.path.relpath(path, target_dir).replace('\\', '/')
+                
+                # Robust content reading (UTF8/UTF16)
+                content = None
+                try:
+                    with open(path, 'r', encoding='utf-8-sig') as file:
+                        content = file.read()
+                except UnicodeDecodeError:
+                    try:
+                        with open(path, 'r', encoding='utf-16') as file:
+                            content = file.read()
+                    except: continue
+                
+                if not content or "말하기" not in content: continue
+
+                import io
+                f_io = io.StringIO(content)
+                reader = csv.reader(f_io)
+                try:
+                    rows = list(reader)
+                except: continue
+                
+                if len(rows) < 5: continue
+                
+                def clean_for_match(s):
+                    # Remove hex tags, quotes, and common punctuation at ends
+                    s = hex_regex.sub('', s).strip()
+                    s = s.strip('"\'').strip()
+                    # Strip common trailing punctuation often found in instructions but not target rows
+                    s = s.rstrip('.?!,').strip()
+                    return s
+
+                file_anonymized_ids = set()
+                modified = False
+                
+                # PHASE 1: Collect ALL standalone phrases in the file (potential targets)
+                # A phrase is a candidate if it's longer than 1 char and not "말하기"
+                candidates = {} # clean_text -> list of row indices
+                for j, crow in enumerate(rows):
+                    if j < 4 or len(crow) < 3: continue
+                    ctext = crow[2]
+                    if not ctext: continue
+                    clean_t = clean_for_match(ctext)
+                    if len(clean_t) > 1 and clean_t != "말하기":
+                        if clean_t not in candidates:
+                            candidates[clean_t] = []
+                        candidates[clean_t].append(j)
+
+                # PHASE 2: Process "Say" instructions using hints verified by candidates
+                if candidates:
+                    # Regex for finding quoted strings
+                    quote_regex = re.compile(r'["\'](.*?)["\']')
+                    
+                    for i, row in enumerate(rows):
+                        if i < 4 or len(row) < 3: continue
+                        text = row[2]
+                        if "대화창" in text and "'말하기'" in text:
+                            # 1. Find the earliest anchor to define the suffix
+                            split_idx = -1
+                            for anchor in ["키보드로", "가상 키보드로", "방식으로"]:
+                                idx = text.find(anchor)
+                                if idx != -1:
+                                    split_idx = idx + len(anchor)
+                                    break 
+                            
+                            prefix = text[:split_idx] if split_idx != -1 else ""
+                            suffix = text[split_idx:] if split_idx != -1 else text
+                            
+                            file_already_modified = False
+                            collected_originals = []
+                            
+                            # 2. Extract potential hints (quoted strings) from the suffix
+                            found_hints = quote_regex.findall(suffix)
+                            if not found_hints: continue
+                            
+                            for hint in set(found_hints):
+                                if hint == "말하기": continue
+                                cleaned_hint = clean_for_match(hint)
+                                
+                                if cleaned_hint in candidates:
+                                    # SUCCESS: The hint in the instruction matches a standalone row
+                                    # Scrub instruction suffix (preserve quotes style) - Now using 'r'
+                                    new_suffix = suffix.replace(f'"{hint}"', '"r"').replace(f"'{hint}'", '"r"')
+                                    if new_suffix == suffix: # Fallback if no quotes found around it
+                                         new_suffix = suffix.replace(hint, "r")
+                                    
+                                    if new_suffix != suffix:
+                                        suffix = new_suffix
+                                        collected_originals.append(hint)
+                                        # Scrub all matching standalone target rows to 'r'
+                                        for idx in candidates[cleaned_hint]:
+                                            rows[idx][2] = "r"
+                                            file_anonymized_ids.add(str(rows[idx][0]))
+                                        file_already_modified = True
+                                        modified = True
+
+                            if file_already_modified:
+                                final_text = prefix + suffix
+                                if collected_originals:
+                                    # Append original text reference in (phrase) format
+                                    ref_text = "".join([f"({h})" for h in collected_originals])
+                                    final_text += ref_text
+                                rows[i][2] = final_text.strip()
+                                file_anonymized_ids.add(str(row[0]))
+
+                if modified:
+                    if file_anonymized_ids:
+                        self.anonymized_ids[rel_path] = file_anonymized_ids
+                        self.anonymized_ids[rel_path.replace(".ko.csv", ".csv")] = file_anonymized_ids
+                    temp = path + ".tmp"
+                    with open(temp, 'w', encoding='utf-8', newline='') as file:
+                        csv.writer(file).writerows(rows)
+                    self.safe_replace(temp, path)
+                    logger.info(f"Anonymized chat phrases in: {os.path.relpath(path, target_dir)}")
 
     def _apply_row_operations(self, path, rows_to_del, keys_to_remap):
         # Convert config to strings for comparison
@@ -242,19 +398,11 @@ class CSVProcessor:
                     remap_cols_conf = config.get("remap_columns", {})
                     
                     # Determine rules for this file
-                    base = file.replace(".ko.csv", ".csv")
-                    explicit_deletes = set()
-                    explicit_keeps = set()
-                    
-                    for k in delete_cols_conf:
-                        if k == file or k == base:
-                            explicit_deletes = set(str(c) for c in delete_cols_conf[k])
-                            break
-                    
-                    for k in keep_cols_conf:
-                        if k == file or k == base:
-                            explicit_keeps = set(str(c) for c in keep_cols_conf[k])
-                            break
+                    rel_path = os.path.relpath(path, target_dir).replace('\\', '/')
+                    base_rel_path = rel_path.replace(".ko.csv", ".csv")
+
+                    explicit_deletes = set(str(c) for c in (delete_cols_conf.get(rel_path) or delete_cols_conf.get(base_rel_path) or []))
+                    explicit_keeps = set(str(c) for c in (keep_cols_conf.get(rel_path) or keep_cols_conf.get(base_rel_path) or []))
                     
 
 
@@ -322,24 +470,20 @@ class CSVProcessor:
                     path = os.path.join(root, file)
                     
                     # Determine rules
-                    base = file.replace(".ko.csv", ".csv")
+                    rel_path = os.path.relpath(path, target_dir).replace('\\', '/')
+                    base_rel_path = rel_path.replace(".ko.csv", ".csv")
+
                     file_keep_rows = set()
                     keep_all_rows = False
-                    explicit_keep_cols = set()
                     
-                    for k in keep_rows_conf:
-                        if k == file or k == base:
-                            conf_val = keep_rows_conf[k]
-                            if isinstance(conf_val, list) and "ALL" in conf_val:
-                                keep_all_rows = True
-                            else:
-                                file_keep_rows = set(str(rid) for rid in conf_val)
-                            break
-                    
-                    for k in keep_cols_conf:
-                        if k == file or k == base:
-                            explicit_keep_cols = set(str(c) for c in keep_cols_conf[k])
-                            break
+                    conf_val = keep_rows_conf.get(rel_path) or keep_rows_conf.get(base_rel_path)
+                    if conf_val:
+                        if isinstance(conf_val, list) and "ALL" in conf_val:
+                            keep_all_rows = True
+                        else:
+                            file_keep_rows = set(str(rid) for rid in conf_val)
+
+                    explicit_keep_cols = set(str(c) for c in (keep_cols_conf.get(rel_path) or keep_cols_conf.get(base_rel_path) or []))
 
                     temp = path + ".tmp"
                     rows = []
@@ -366,14 +510,15 @@ class CSVProcessor:
                                 content_indices.add(i)
 
                         # Filter data rows
+                        file_anon_ids = self.anonymized_ids.get(rel_path) or self.anonymized_ids.get(base_rel_path) or set()
                         for row in reader:
                             # Keep row if:
                             # 1. keep_all_rows is True
                             # 2. contains Korean text
-                            # 3. is in explicit keep_rows list
+                            # 3. is in explicit keep_rows list or was anonymized
                             # 4. has non-empty content in an explicitly preserved column (keep_columns)
                             has_ko = any(self.has_korean(cell) for cell in row[1:])
-                            is_kept_id = row and row[0] in file_keep_rows
+                            is_kept_id = row and (row[0] in file_keep_rows or row[0] in file_anon_ids)
                             has_preserved_content = any(row[i] for i in content_indices if i < len(row))
                             
                             if keep_all_rows or has_ko or is_kept_id or has_preserved_content:
