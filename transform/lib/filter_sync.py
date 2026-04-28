@@ -56,7 +56,7 @@ class FilterSync:
 
         for row in data:
             # Headers: idx, File, Key, Offset, Type, Global, KR, Exclude, Swap_Key, Swap_Offset
-            if not row.get('File') or not row.get('Key'):
+            if not row.get('File') or str(row.get('Key', '')).strip() == '':
                 continue
                 
             filename = self.normalize_filename(str(row['File']))

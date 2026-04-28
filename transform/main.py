@@ -187,7 +187,7 @@ class Orchestrator:
         # Validate against version root
         target_dir = self.pm.dst_root
         
-        results = self.validator.validate(target_dir)
+        results = self.validator.validate(target_dir, config=self.config)
         if results:
             self.validator.save_report(results, self.pm.validation_json_path)
         else:

@@ -47,7 +47,7 @@ class ValidationManager:
         except Exception as e:
             logger.error(f"Error loading presets: {e}")
 
-    def validate(self, target_dir):
+    def validate(self, target_dir, config=None):
         """Validate actual files against expected presets."""
         results = {
             "not_found": [],
@@ -56,10 +56,27 @@ class ValidationManager:
         
         # Ignore versioning and manifest files
         ignored_patterns = ["rawexd.zip", "version.txt", "data.json"]
+        
+        # Build set of intentionally deleted files from config (normalize to rawexd/Name.csv)
+        deleted_files = set()
+        if config:
+            for entry in config.get("delete_files", []):
+                entry = entry.replace('\\', '/')
+                # Match both bare filename and rawexd-prefixed path
+                deleted_files.add(entry)
+                deleted_files.add(f"rawexd/{entry}")
+                basename = entry.split('/')[-1]
+                deleted_files.add(basename)
+                deleted_files.add(f"rawexd/{basename}")
 
         # Check for missing files in presets
         for f_path in self.expected_files:
             if any(f_path == p or f_path.startswith(p + "/") for p in ignored_patterns):
+                continue
+            
+            # Skip files intentionally removed by filter config
+            basename = f_path.split('/')[-1]
+            if f_path in deleted_files or basename in deleted_files:
                 continue
                 
             full_path = os.path.join(target_dir, f_path)
