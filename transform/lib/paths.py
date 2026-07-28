@@ -1,6 +1,7 @@
 import os
 import shutil
 import datetime
+import re
 from .logging_setup import get_logger
 
 logger = get_logger()
@@ -10,7 +11,7 @@ class PathManager:
         self.base_dir = base_dir
         self.folder_name = folder_name
         self.timestamp = datetime.datetime.now().strftime("%m%d.%H%M")
-        self.version_string = folder_name.replace(".0000.0000", f".{self.timestamp}")
+        self.version_string = re.sub(r"\.\d{4}\.\d{4}$", f".{self.timestamp}", folder_name)
         
         # Language-specific paths
         self.src_root = os.path.join(base_dir, "transform", "original", sub_path, folder_name)

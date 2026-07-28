@@ -128,6 +128,55 @@ class CSVProcessor:
                     if has_row_remaps:
                         self._apply_col_remaps(os.path.join(root, f), file_remaps)
 
+    def normalize_event_item_offsets(self, target_dir):
+        # EventItem is a special case: if offset 0 contains Korean text,
+        # mirror it into offsets 4 and 8 when those columns are empty.
+        path = os.path.join(target_dir, "EventItem.ko.csv")
+        if not os.path.exists(path):
+            return
+
+        with open(path, 'r', encoding='utf-8') as f:
+            rows = list(csv.reader(f))
+
+        if len(rows) < 4:
+            return
+
+        offsets = rows[2]
+        offset_to_idx = {str(off): i for i, off in enumerate(offsets)}
+        required_offsets = ("0", "4", "8")
+        if any(off not in offset_to_idx for off in required_offsets):
+            return
+
+        idx0 = offset_to_idx["0"]
+        idx4 = offset_to_idx["4"]
+        idx8 = offset_to_idx["8"]
+        modified = False
+
+        for r_idx in range(4, len(rows)):
+            row = rows[r_idx]
+            if not row:
+                continue
+
+            val0 = row[idx0].strip() if idx0 < len(row) else ""
+            if not val0 or not CommonUtils.is_kr(val0):
+                continue
+
+            new_row = list(row)
+            if idx4 < len(new_row) and not new_row[idx4].strip():
+                new_row[idx4] = val0
+                modified = True
+            if idx8 < len(new_row) and not new_row[idx8].strip():
+                new_row[idx8] = val0
+                modified = True
+            rows[r_idx] = new_row
+
+        if modified:
+            temp = path + ".tmp"
+            with open(temp, 'w', encoding='utf-8', newline='') as f:
+                csv.writer(f).writerows(rows)
+            self.safe_replace(temp, path)
+            logger.info(f"Normalized EventItem fallback offsets: {path}")
+
     def _apply_col_remaps(self, path, file_remaps):
         temp = path + ".tmp"
         rows = []

@@ -47,7 +47,7 @@ class Orchestrator:
             self.init_filters()
             
             # Sync Filter Configuration
-            logger.info(f"Phase 0: Syncing filter configuration from Google Sheets...")
+            logger.info(f"Phase 1: Syncing filter configuration from Google Sheets...")
             if not self.fs.update_config():
                 logger.warning("Warning: Filter sync failed, using cached manual config only.")
             
@@ -56,32 +56,35 @@ class Orchestrator:
             logger.info("Loaded merged filter configuration.")
 
             # Isolate source data to output directory
-            logger.info(f"Phase 1: Isolating {self.pm.folder_name} to output/{self.pm.version_string}...")
+            logger.info(f"Phase 2: Isolating {self.pm.folder_name} to output/{self.pm.version_string}...")
             if not self.pm.prepare_output_dir(): 
                 return
 
             target = self.pm.target_dir
             
-            logger.info(f"Phase 2: Initial cleanup and manual filters...")
+            logger.info(f"Phase 3: Initial cleanup and manual filters...")
             self.cp.initial_cleanup(target)
             self.cp.apply_manual_filters(target, self.config)
 
-            logger.info(f"Phase 3: Applying column remapping from filter.json...")
+            logger.info(f"Phase 4: Applying column remapping from filter.json...")
             self.cp.apply_column_remapping(target, self.config)
 
-            logger.info(f"Phase 4: Anonymizing chat quest phrases to prevent broadcast...")
+            logger.info(f"Phase 5: Anonymizing chat quest phrases to prevent broadcast...")
             self.cp.anonymize_chat_phrases(target)
             
-            logger.info(f"Phase 5: Filtering columns...")
+            logger.info(f"Phase 6: Filtering columns...")
             self.cp.filter_columns(target, config=self.config)
 
-            logger.info(f"Phase 6: Removing rows without target language content...")
+            logger.info(f"Phase 7: Removing rows without target language content...")
             self.cp.remove_empty_rows(target, config=self.config)
+
+            logger.info(f"Phase 8: Normalizing EventItem offsets after filtering...")
+            self.cp.normalize_event_item_offsets(target)
             
-            logger.info(f"Phase 7: Processing RSV keys...")
+            logger.info(f"Phase 9: Processing RSV keys...")
             self.cp.process_rsv(target) 
             
-            logger.info(f"Phase 8: Syncing ACT overrides...")
+            logger.info(f"Phase 10: Syncing ACT overrides...")
             if self.rm.new_keys_found:
                 # Sync new keys with ACT overrides
                 self.rm.save()
@@ -90,13 +93,13 @@ class Orchestrator:
             else:
                 self.rm.sync_act_overrides()
                 
-            logger.info(f"Phase 9: Generating Manifest (data.json)...")
+            logger.info(f"Phase 11: Generating Manifest (data.json)...")
             self.generate_manifest()
 
-            logger.info(f"Phase 10: Removing files without Korean content...")
+            logger.info(f"Phase 12: Removing files without Korean content...")
             self.cp.remove_non_korean_files(target)
 
-            logger.info(f"Phase 11: Finalizing file names (.ko.csv -> .csv)...")
+            logger.info(f"Phase 13: Finalizing file names (.ko.csv -> .csv)...")
             self.cp.rename_files(target)
 
             # Package and versioning
@@ -104,7 +107,7 @@ class Orchestrator:
             self.create_zip(rawexd_path)
             self.create_version_txt()
 
-            logger.info(f"Phase 12: Running validation...")
+            logger.info(f"Phase 14: Running validation...")
             self.run_validation()
             
         finally:
@@ -116,7 +119,7 @@ class Orchestrator:
                 except Exception as e:
                     logger.warning(f"Failed to cleanup transient config: {e}")
         
-        logger.info(f"Phase 13: Uploading to S3...")
+        logger.info(f"Phase 15: Uploading to S3...")
         zip_base, zip_path = self.pm.get_zip_paths()
         ver_path = self.pm.get_version_txt_path()
         data_path = self.pm.data_json_path
