@@ -13,6 +13,7 @@ from lib.filter_sync import FilterSync
 from lib.logging_setup import setup_logging
 from lib.config import Config
 from lib.discord_notifier import DiscordNotifier
+from lib.resource_release import build_release, publish_release
 
 # Load environmental variables
 load_dotenv()
@@ -21,8 +22,12 @@ load_dotenv()
 logger = setup_logging()
 
 class Orchestrator:
-    def __init__(self, folder_name, sub_path=""):
+    def __init__(self, folder_name, sub_path="", with_resources=None):
         self.base_dir = Config.BASE_DIR
+        self.with_resources = (all(os.environ.get(key) for key in ('RESOURCE_SWAP_PROJECT', 'RESOURCE_KR_CLIENT', 'RESOURCE_GLOBAL_CLIENT'))
+                               if with_resources is None else with_resources)
+        if self.with_resources and os.environ.get('RESOURCE_RELEASE_CHANNEL', 'stable') != 'stable':
+            raise ValueError('The integrated CSV pipeline publishes Stable; use resources.py for Staging images')
         self.pm = PathManager(self.base_dir, folder_name, sub_path=sub_path)
         self.rm = RSVManager(self.pm.rsv_json_path)
         self.cp = CSVProcessor(self.rm)
@@ -119,14 +124,31 @@ class Orchestrator:
                 except Exception as e:
                     logger.warning(f"Failed to cleanup transient config: {e}")
         
+        resource_release = None
+        if self.with_resources:
+            logger.info("Extracting and packaging Korean icons 120000-129999...")
+            resource_release = build_release(os.path.join(self.pm.dst_root, 'resources'), self.pm.folder_name, self.pm.version_string)
+
         logger.info(f"Phase 15: Uploading to S3...")
         zip_base, zip_path = self.pm.get_zip_paths()
         ver_path = self.pm.get_version_txt_path()
         data_path = self.pm.data_json_path
         
-        if self.uploader.upload_files([zip_path, ver_path, data_path]):
+        if self.uploader.upload_files([zip_path]):
             # Local cleanup: Only delete zip, keep version.txt and data.json
             self.uploader.cleanup_local([zip_path])
+        else:
+            raise RuntimeError('CSV upload failed; resource release was not published')
+
+        if resource_release:
+            archive, release = resource_release
+            # Publish the release descriptor only after its archive has uploaded successfully.
+            publish_release(self.uploader, archive, release, data_path=data_path)
+        elif not self.uploader.upload_files([data_path]):
+            raise RuntimeError('CSV data.json upload failed')
+        # Text and image resources share this commit marker; font version remains independent.
+        if not self.uploader.upload_files([ver_path]):
+            raise RuntimeError('Shared text/resource version publication failed')
         
         logger.info(f"\n=== Pipeline Completed Successfully ===")
         logger.info(f"Results located in: {self.pm.dst_root}")
@@ -197,7 +219,10 @@ class Orchestrator:
             logger.info("Validation passed: All expected files present.")
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python main.py <folder_name>")
-    else:
-        Orchestrator(sys.argv[1]).run()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('folder_name')
+    parser.add_argument('--with-resources', action='store_true', default=None, help='Include Korean icons; automatic when resource client settings are configured')
+    parser.add_argument('--without-resources', dest='with_resources', action='store_false', help='Publish text only')
+    arguments = parser.parse_args()
+    Orchestrator(arguments.folder_name, with_resources=arguments.with_resources).run()
