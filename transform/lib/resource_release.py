@@ -1,4 +1,4 @@
-"""Build portable 120000-129999 icon releases; no game writes or network operations."""
+"""Build portable 12xxxx/18xxxx icon releases; no game writes or network operations."""
 import hashlib
 import json
 import os
@@ -34,8 +34,10 @@ def package_release(package, output, text_version=None):
     files, targets = {}, set()
     for entry in entries:
         target = entry['target']
-        match = re.fullmatch(r'ui/icon/(12\d)000/(?:(en|ja|de|fr)/)?\1\d{3}(_hr1)?\.tex', target)
-        if entry['status'] != 'prepared' or not match or target in targets:
+        match = re.fullmatch(r'ui/icon/(\d{3})000/(?:(en|ja|de|fr)/)?\1\d{3}(_hr1)?\.tex', target)
+        excluded = {'180101', '180102', '180103', '180151', '180152', '180153'}
+        resource_id = target.rsplit('/', 1)[-1].split('_', 1)[0].split('.', 1)[0]
+        if entry['status'] != 'prepared' or not match or target in targets or resource_id in excluded:
             raise ValueError('Invalid/duplicate resource target: ' + target)
         source = target.replace('/' + match[2] + '/', '/ko/') if match[2] else target
         if entry['source'] != source:

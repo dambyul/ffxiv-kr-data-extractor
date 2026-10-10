@@ -126,7 +126,7 @@ class Orchestrator:
         
         resource_release = None
         if self.with_resources:
-            logger.info("Extracting and packaging Korean icons 120000-129999...")
+            logger.info("Extracting and packaging Korean icons 120000-129999 and 180000-189999 (6 excluded IDs)...")
             resource_release = build_release(os.path.join(self.pm.dst_root, 'resources'), self.pm.folder_name, self.pm.version_string)
 
         logger.info(f"Phase 15: Uploading to S3...")
